@@ -596,9 +596,14 @@ export default function App() {
     const imageKey = `product-image-${nextId}`;
     const shouldStoreImage = isDataImage(payload.image_url);
     let cloudImage = null;
+    let imageUploadWarning = "";
 
     if (shouldStoreImage && cloudStore.isSupabaseConfigured) {
-      cloudImage = await cloudStore.uploadProductImage(payload.image_url, nextId);
+      try {
+        cloudImage = await cloudStore.uploadProductImage(payload.image_url, nextId);
+      } catch (error) {
+        imageUploadWarning = error.message;
+      }
     }
 
     const normalizedPayload = normalizeProduct(
@@ -644,7 +649,11 @@ export default function App() {
     }
 
     setProducts(nextProducts);
-    setMessage(editingId ? "Product updated." : "New product added.");
+    setMessage(
+      imageUploadWarning
+        ? `${editingId ? "Product updated" : "New product added"}, but image upload failed: ${imageUploadWarning}`
+        : editingId ? "Product updated." : "New product added."
+    );
   }
 
   async function deleteProduct(productId) {

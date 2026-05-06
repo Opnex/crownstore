@@ -46,6 +46,10 @@ create table if not exists orders (
   whatsapp_url text default ''
 );
 
+insert into storage.buckets (id, name, public)
+values ('product-images', 'product-images', true)
+on conflict (id) do update set public = true;
+
 alter table products enable row level security;
 alter table store_settings enable row level security;
 alter table orders enable row level security;
@@ -82,3 +86,22 @@ on orders for all
 to anon
 using (true)
 with check (true);
+
+drop policy if exists "Public can read product images" on storage.objects;
+create policy "Public can read product images"
+on storage.objects for select
+to anon
+using (bucket_id = 'product-images');
+
+drop policy if exists "Anon can upload product images" on storage.objects;
+create policy "Anon can upload product images"
+on storage.objects for insert
+to anon
+with check (bucket_id = 'product-images');
+
+drop policy if exists "Anon can update product images" on storage.objects;
+create policy "Anon can update product images"
+on storage.objects for update
+to anon
+using (bucket_id = 'product-images')
+with check (bucket_id = 'product-images');

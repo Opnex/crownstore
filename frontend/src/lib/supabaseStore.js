@@ -102,6 +102,9 @@ export async function uploadProductImage(dataUrl, productId) {
 
   if (!response.ok) {
     const errorText = await response.text();
+    if (response.status === 404 && errorText.toLowerCase().includes("bucket")) {
+      throw new Error("Supabase Storage bucket 'product-images' was not found. Create it in Supabase Storage before uploading product photos.");
+    }
     throw new Error(errorText || "Product image upload failed.");
   }
 
