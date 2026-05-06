@@ -595,18 +595,24 @@ export default function App() {
     const nextId = editingId || (products.length ? Math.max(...products.map((product) => product.id)) + 1 : 1);
     const imageKey = `product-image-${nextId}`;
     const shouldStoreImage = isDataImage(payload.image_url);
+    let cloudImage = null;
+
+    if (shouldStoreImage && cloudStore.isSupabaseConfigured) {
+      cloudImage = await cloudStore.uploadProductImage(payload.image_url, nextId);
+    }
+
     const normalizedPayload = normalizeProduct(
       {
         ...payload,
         id: nextId,
-        image_key: shouldStoreImage ? imageKey : payload.image_key || "",
-        image_preview_url: shouldStoreImage ? payload.image_url : payload.image_preview_url || "",
-        image_url: shouldStoreImage ? "" : payload.image_url
+        image_key: cloudImage?.image_key || (shouldStoreImage ? imageKey : payload.image_key || ""),
+        image_preview_url: cloudImage?.image_preview_url || (shouldStoreImage ? payload.image_url : payload.image_preview_url || ""),
+        image_url: cloudImage?.image_url || (shouldStoreImage ? "" : payload.image_url)
       },
       nextId
     );
 
-    if (shouldStoreImage) {
+    if (shouldStoreImage && !cloudImage) {
       try {
         await saveProductImage(imageKey, payload.image_url);
       } catch (error) {

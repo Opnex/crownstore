@@ -77,8 +77,12 @@ export function LocalAdminPanel({
   const [editingId, setEditingId] = useState(null);
   const [status, setStatus] = useState("");
   const [settingsStatus, setSettingsStatus] = useState("");
+  const [settingsStatusType, setSettingsStatusType] = useState("success");
   const [passwordStatus, setPasswordStatus] = useState("");
   const [passwordStatusType, setPasswordStatusType] = useState("success");
+  const [isProductSaving, setIsProductSaving] = useState(false);
+  const [isSettingsSaving, setIsSettingsSaving] = useState(false);
+  const [adminProductSearch, setAdminProductSearch] = useState("");
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
     new_password: "",
@@ -101,6 +105,18 @@ export function LocalAdminPanel({
     "Gown",
     ...new Set(products.map((product) => product.category).filter(Boolean))
   ].filter((category, index, list) => list.indexOf(category) === index);
+  const searchedAdminProducts = adminProductSearch
+    ? products.filter((product) => {
+      const query = adminProductSearch.toLowerCase();
+      return (
+        product.name.toLowerCase().includes(query) ||
+        product.category.toLowerCase().includes(query) ||
+        product.description.toLowerCase().includes(query) ||
+        product.sizes.some((size) => size.toLowerCase().includes(query)) ||
+        product.colors.some((color) => color.toLowerCase().includes(query))
+      );
+    })
+    : products;
 
   useEffect(() => {
     if (editingId && !products.some((product) => product.id === editingId)) {
@@ -153,6 +169,7 @@ export function LocalAdminPanel({
     const { name, value } = event.target;
     setSettingsForm((current) => ({ ...current, [name]: value }));
     setSettingsStatus("");
+    setSettingsStatusType("success");
   }
 
   function handlePasswordChange(event) {
@@ -169,7 +186,7 @@ export function LocalAdminPanel({
     try {
       const imageUrl = await compressImageFile(file);
       setForm((current) => ({ ...current, image_url: imageUrl }));
-      setStatus("Image compressed and saved for this browser.");
+      setStatus(isSupabaseConfigured ? "Image ready for cloud upload." : "Image compressed and saved for this browser.");
     } catch (error) {
       setStatus(error.message);
     }
@@ -203,6 +220,7 @@ export function LocalAdminPanel({
 
   async function handleSubmit(event) {
     event.preventDefault();
+    setIsProductSaving(true);
 
     try {
       await saveProduct(
@@ -215,22 +233,29 @@ export function LocalAdminPanel({
         editingId
       );
 
-      resetForm(editingId ? "Product updated locally." : "Product added locally.");
+      resetForm(editingId ? "Product updated and synced." : "Product added and synced.");
     } catch (error) {
       setStatus(error.message);
+    } finally {
+      setIsProductSaving(false);
     }
   }
 
   async function handleSettingsSubmit(event) {
     event.preventDefault();
+    setIsSettingsSaving(true);
     try {
       await saveSettings({
         ...settings,
         ...settingsForm
       });
-      setSettingsStatus("Store details saved successfully.");
+      setSettingsStatus("Store details saved and synced.");
+      setSettingsStatusType("success");
     } catch (error) {
       setSettingsStatus(error.message);
+      setSettingsStatusType("error");
+    } finally {
+      setIsSettingsSaving(false);
     }
   }
 
@@ -294,30 +319,48 @@ export function LocalAdminPanel({
               <h2>{editingId ? "Edit product" : "Add a product"}</h2>
             </div>
             <form className="order-form admin-form-grid" onSubmit={handleSubmit}>
-              <input name="name" placeholder="Product name" value={form.name} onChange={handleChange} required />
-              <select name="category" value={form.category} onChange={handleChange} required>
-                <option value="">Select category</option>
-                {categoryOptions.map((category) => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </select>
-              <input name="price" type="number" min="0" placeholder="Price" value={form.price} onChange={handleChange} required />
-              <input name="sizes" placeholder="Sizes, comma separated" value={form.sizes} onChange={handleChange} />
-              <input name="colors" placeholder="Colors, comma separated" value={form.colors} onChange={handleChange} />
-              <textarea className="full-field" name="description" placeholder="Product description" value={form.description} onChange={handleChange} required />
-              <input type="file" accept="image/*" onChange={handleImageUpload} />
-              <input name="image_url" placeholder="Image URL or uploaded image" value={form.image_url} onChange={handleChange} />
-              <label className="checkbox-row">
-                <input type="checkbox" name="featured" checked={form.featured} onChange={handleChange} />
-                Mark as featured
-              </label>
-              <label className="checkbox-row">
-                <input type="checkbox" name="in_stock" checked={form.in_stock} onChange={handleChange} />
-                Mark as in stock
-              </label>
+              <div className="admin-fieldset full-field">
+                <p className="fieldset-title">Basic info</p>
+                <div className="admin-form-grid">
+                  <input name="name" placeholder="Product name" value={form.name} onChange={handleChange} required />
+                  <select name="category" value={form.category} onChange={handleChange} required>
+                    <option value="">Select category</option>
+                    {categoryOptions.map((category) => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
+                  <textarea className="full-field" name="description" placeholder="Product description" value={form.description} onChange={handleChange} required />
+                </div>
+              </div>
+              <div className="admin-fieldset full-field">
+                <p className="fieldset-title">Pricing and options</p>
+                <div className="admin-form-grid">
+                  <input name="price" type="number" min="0" placeholder="Price" value={form.price} onChange={handleChange} required />
+                  <input name="stock_count" type="number" min="0" placeholder="Stock count" value={form.stock_count} onChange={handleChange} required />
+                  <input name="sizes" placeholder="Sizes, comma separated" value={form.sizes} onChange={handleChange} />
+                  <input name="colors" placeholder="Colors, comma separated" value={form.colors} onChange={handleChange} />
+                  <label className="checkbox-row">
+                    <input type="checkbox" name="featured" checked={form.featured} onChange={handleChange} />
+                    Mark as featured
+                  </label>
+                  <label className="checkbox-row">
+                    <input type="checkbox" name="in_stock" checked={form.in_stock} onChange={handleChange} />
+                    Mark as in stock
+                  </label>
+                </div>
+              </div>
+              <div className="admin-fieldset full-field">
+                <p className="fieldset-title">Image</p>
+                <div className="admin-form-grid">
+                  <input type="file" accept="image/*" onChange={handleImageUpload} />
+                  <input name="image_url" placeholder="Image URL or uploaded image" value={form.image_url} onChange={handleChange} />
+                </div>
+              </div>
               <div className="form-actions full-field">
-                <button type="submit">{editingId ? "Update product" : "Add product"}</button>
-                <button type="button" className="ghost-button" onClick={() => resetForm()}>
+                <button type="submit" disabled={isProductSaving}>
+                  {isProductSaving ? "Saving..." : editingId ? "Update product" : "Add product"}
+                </button>
+                <button type="button" className="ghost-button" onClick={() => resetForm()} disabled={isProductSaving}>
                   Clear
                 </button>
               </div>
@@ -348,10 +391,12 @@ export function LocalAdminPanel({
               <textarea className="full-field" name="delivery_note" placeholder="Delivery note" value={settingsForm.delivery_note} onChange={handleSettingsChange} required />
               <textarea className="full-field" name="payment_note" placeholder="Payment instruction shown at checkout" value={settingsForm.payment_note} onChange={handleSettingsChange} required />
               <div className="form-actions full-field">
-                <button type="submit">Save settings</button>
+                <button type="submit" disabled={isSettingsSaving}>
+                  {isSettingsSaving ? "Saving..." : "Save settings"}
+                </button>
               </div>
             </form>
-            {settingsStatus ? <p className="form-status success-message">{settingsStatus}</p> : null}
+            {settingsStatus ? <p className={`form-status ${settingsStatusType === "error" ? "error-message" : "success-message"}`}>{settingsStatus}</p> : null}
           </section>
 
           <section className="panel">
@@ -402,8 +447,15 @@ export function LocalAdminPanel({
               <p className="eyebrow">Products</p>
               <h2>Catalog list</h2>
             </div>
+            <input
+              type="search"
+              className="search-input admin-search"
+              placeholder="Search products, categories, sizes, or colors..."
+              value={adminProductSearch}
+              onChange={(event) => setAdminProductSearch(event.target.value)}
+            />
             <div className="admin-product-list">
-              {products.map((product) => (
+              {searchedAdminProducts.map((product) => (
                 <article key={product.id} className="admin-product-card">
                   <img
                     className="admin-product-image"
@@ -428,6 +480,9 @@ export function LocalAdminPanel({
                   </div>
                 </article>
               ))}
+              {!searchedAdminProducts.length ? (
+                <p className="empty">No product matched that search.</p>
+              ) : null}
             </div>
           </section>
 
@@ -452,7 +507,16 @@ export function LocalAdminPanel({
                       <span>{new Date(order.created_at).toLocaleDateString()}</span>
                     </div>
                     <p>{order.phone}</p>
+                    <p>{order.address}</p>
                     <p>N{order.total_amount.toLocaleString()}</p>
+                    <div className="order-items">
+                      {order.items?.map((item) => (
+                        <span key={item.cart_key || `${item.name}-${item.quantity}`}>
+                          {item.quantity} x {item.name}{item.variant_label ? ` (${item.variant_label})` : ""}
+                        </span>
+                      ))}
+                    </div>
+                    {order.notes ? <p>Note: {order.notes}</p> : null}
                     <select
                       className="status-select"
                       value={order.status || "New"}

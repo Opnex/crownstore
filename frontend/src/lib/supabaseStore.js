@@ -1,6 +1,20 @@
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const PRODUCT_IMAGES_BUCKET = "product-images";
 const SETTINGS_ID = "main";
+const SETTINGS_COLUMNS = [
+  "store_name",
+  "logo_text",
+  "whatsapp_number",
+  "contact_email",
+  "contact_phone",
+  "contact_address",
+  "opening_hours",
+  "delivery_note",
+  "payment_note",
+  "hero_title",
+  "hero_subtitle"
+];
 
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
@@ -11,6 +25,19 @@ function getHeaders(extra = {}) {
     "Content-Type": "application/json",
     ...extra
   };
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [meta, content] = dataUrl.split(",");
+  const mime = meta.match(/data:(.*);base64/)?.[1] || "image/jpeg";
+  const binary = atob(content);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: mime });
 }
 
 async function request(path, options = {}) {
@@ -54,12 +81,48 @@ export async function removeProduct(productId) {
   });
 }
 
+export async function uploadProductImage(dataUrl, productId) {
+  if (!isSupabaseConfigured) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const blob = dataUrlToBlob(dataUrl);
+  const extension = blob.type.includes("png") ? "png" : "jpg";
+  const imagePath = `${productId}-${Date.now()}.${extension}`;
+  const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${PRODUCT_IMAGES_BUCKET}/${imagePath}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": blob.type,
+      "x-upsert": "true"
+    },
+    body: blob
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Product image upload failed.");
+  }
+
+  return {
+    image_key: imagePath,
+    image_url: `${SUPABASE_URL}/storage/v1/object/public/${PRODUCT_IMAGES_BUCKET}/${imagePath}`,
+    image_preview_url: `${SUPABASE_URL}/storage/v1/object/public/${PRODUCT_IMAGES_BUCKET}/${imagePath}`
+  };
+}
+
 export async function fetchSettings() {
   const rows = await request(`store_settings?id=eq.${SETTINGS_ID}&select=*`);
   return rows?.[0] || null;
 }
 
 export async function saveSettings(settings) {
+  const safeSettings = SETTINGS_COLUMNS.reduce((payload, key) => {
+    payload[key] = settings[key] || "";
+    return payload;
+  }, {});
+
   const rows = await request("store_settings?on_conflict=id", {
     method: "POST",
     headers: {
@@ -67,7 +130,7 @@ export async function saveSettings(settings) {
     },
     body: JSON.stringify({
       id: SETTINGS_ID,
-      ...settings
+      ...safeSettings
     })
   });
 
