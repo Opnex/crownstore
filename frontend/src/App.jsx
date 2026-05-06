@@ -4,6 +4,7 @@ import { LocalAdminPanel } from "./components/LocalAdminPanel";
 import { ProductGrid } from "./components/ProductGrid";
 import { OrderForm } from "./components/OrderForm";
 import { productsData } from "./data/products";
+import * as cloudStore from "./lib/supabaseStore";
 
 const DEFAULT_WHATSAPP_NUMBER = import.meta.env.VITE_WHATSAPP_NUMBER || "2347070488972";
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "crownadmin";
@@ -205,6 +206,26 @@ function serializeProducts(products) {
   }));
 }
 
+function serializeProductForCloud(product) {
+  return {
+    id: product.id,
+    name: product.name,
+    category: product.category,
+    audience: product.audience,
+    price: Number(product.price) || 0,
+    in_stock: Boolean(product.in_stock),
+    stock_count: Math.max(0, Number(product.stock_count) || 0),
+    image_url: product.image_url || "",
+    image_key: product.image_key || "",
+    image_preview_url: product.image_preview_url || "",
+    description: product.description || "",
+    featured: Boolean(product.featured),
+    badge: product.badge || "",
+    sizes: normalizeTextArray(product.sizes),
+    colors: normalizeTextArray(product.colors)
+  };
+}
+
 function saveToStorage(key, value) {
   const safeValue = key === PRODUCTS_STORAGE_KEY ? serializeProducts(value) : value;
   localStorage.setItem(key, JSON.stringify(safeValue));
@@ -291,6 +312,7 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem(THEME_STORAGE_KEY) === "dark");
   const [toasts, setToasts] = useState([]);
+  const [isCloudReady, setIsCloudReady] = useState(false);
   const isAdminPath = window.location.pathname.startsWith("/admin");
 
   useEffect(() => {
@@ -305,6 +327,45 @@ export default function App() {
       setMessage(getStorageErrorMessage(error));
     }
   }, [products]);
+
+  useEffect(() => {
+    if (!cloudStore.isSupabaseConfigured) return;
+
+    let isMounted = true;
+
+    async function loadCloudStore() {
+      try {
+        const [cloudProducts, cloudSettings, cloudOrders] = await Promise.all([
+          cloudStore.fetchProducts(),
+          cloudStore.fetchSettings(),
+          cloudStore.fetchOrders()
+        ]);
+
+        if (!isMounted) return;
+
+        if (Array.isArray(cloudProducts) && cloudProducts.length) {
+          setProducts(cloudProducts.map((product, index) => normalizeProduct(product, index + 1)));
+        }
+        if (cloudSettings) {
+          setStoreSettings(normalizeSettings(cloudSettings));
+        }
+        if (Array.isArray(cloudOrders)) {
+          setOrderHistory(cloudOrders);
+        }
+
+        setIsCloudReady(true);
+      } catch (error) {
+        setIsCloudReady(false);
+        setMessage("Cloud store could not be loaded. The app is using this browser's local data for now.");
+      }
+    }
+
+    loadCloudStore();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -471,7 +532,7 @@ export default function App() {
     return `https://wa.me/${normalizeWhatsAppNumber(storeSettings.whatsapp_number)}?text=${encodeURIComponent(lines.join("\n"))}`;
   }
 
-  function submitOrder(customer) {
+  async function submitOrder(customer) {
     if (!cart.length) {
       throw new Error("Add at least one product to the order.");
     }
@@ -492,8 +553,7 @@ export default function App() {
     order.whatsapp_url = buildWhatsAppUrl(order);
     window.open(order.whatsapp_url, "_blank", "noopener,noreferrer");
 
-    setProducts((current) =>
-      current.map((product) => {
+    const nextProducts = products.map((product) => {
         const totalSelected = cart
           .filter((item) => item.product_id === product.id)
           .reduce((sum, item) => sum + item.quantity, 0);
@@ -506,9 +566,22 @@ export default function App() {
           stock_count: nextStock,
           in_stock: nextStock > 0
         };
-      })
-    );
+      });
 
+    if (cloudStore.isSupabaseConfigured) {
+      try {
+        await Promise.all([
+          cloudStore.upsertOrder(order),
+          ...nextProducts
+            .filter((product) => products.some((current) => current.id === product.id && current.stock_count !== product.stock_count))
+            .map((product) => cloudStore.upsertProduct(serializeProductForCloud(product)))
+        ]);
+      } catch (error) {
+        throw new Error("Order was prepared, but cloud stock/order history could not be updated.");
+      }
+    }
+
+    setProducts(nextProducts);
     setOrderHistory((current) => [order, ...current]);
     setCart([]);
     setIsCartOpen(false);
@@ -541,13 +614,18 @@ export default function App() {
       }
     }
 
+    const cloudPayload = serializeProductForCloud(normalizedPayload);
+    const savedProduct = cloudStore.isSupabaseConfigured
+      ? normalizeProduct(await cloudStore.upsertProduct(cloudPayload), nextId)
+      : normalizedPayload;
+
     const nextProducts = editingId
       ? products.map((product) =>
-        product.id === editingId ? { ...product, ...normalizedPayload, id: editingId } : product
+        product.id === editingId ? { ...product, ...savedProduct, id: editingId } : product
       )
       : [
         {
-          ...normalizedPayload,
+          ...savedProduct,
           id: nextId
         },
         ...products
@@ -560,10 +638,10 @@ export default function App() {
     }
 
     setProducts(nextProducts);
-    setMessage(editingId ? "Product updated locally." : "New product added locally.");
+    setMessage(editingId ? "Product updated." : "New product added.");
   }
 
-  function deleteProduct(productId) {
+  async function deleteProduct(productId) {
     if (!window.confirm("Delete this product from the local catalog?")) return;
 
     const deletedProduct = products.find((product) => product.id === productId);
@@ -571,14 +649,22 @@ export default function App() {
       deleteProductImage(deletedProduct.image_key).catch(() => {});
     }
 
+    if (cloudStore.isSupabaseConfigured) {
+      await cloudStore.removeProduct(productId);
+    }
+
     setProducts((current) => current.filter((product) => product.id !== productId));
     setCart((current) => current.filter((item) => item.product_id !== productId));
-    setMessage("Product removed from the local catalog.");
+    setMessage("Product removed from the catalog.");
   }
 
-  function saveSettings(nextSettings) {
-    setStoreSettings(normalizeSettings(nextSettings));
-    setMessage("Store settings updated locally.");
+  async function saveSettings(nextSettings) {
+    const normalizedSettings = normalizeSettings(nextSettings);
+    const savedSettings = cloudStore.isSupabaseConfigured
+      ? normalizeSettings(await cloudStore.saveSettings(normalizedSettings))
+      : normalizedSettings;
+    setStoreSettings(savedSettings);
+    setMessage("Store settings updated.");
   }
 
   function loginAdmin(password) {
@@ -605,17 +691,27 @@ export default function App() {
     setIsAdminAuthed(false);
   }
 
-  function updateOrderStatus(orderId, status) {
+  async function updateOrderStatus(orderId, status) {
+    const updatedOrder = orderHistory.find((order) => order.id === orderId);
+    const nextOrder = updatedOrder ? { ...updatedOrder, status } : null;
+
+    if (cloudStore.isSupabaseConfigured && nextOrder) {
+      await cloudStore.upsertOrder(nextOrder);
+    }
+
     setOrderHistory((current) =>
       current.map((order) => (order.id === orderId ? { ...order, status } : order))
     );
-    setMessage("Order status updated locally.");
+    setMessage("Order status updated.");
   }
 
-  function clearOrderHistory() {
+  async function clearOrderHistory() {
     if (!window.confirm("Clear the local order history in this browser?")) return;
+    if (cloudStore.isSupabaseConfigured) {
+      await cloudStore.clearOrders();
+    }
     setOrderHistory([]);
-    setMessage("Local order history cleared.");
+    setMessage("Order history cleared.");
   }
 
   const filteredProducts = activeFilter === "All"
@@ -666,6 +762,8 @@ export default function App() {
         clearOrderHistory={clearOrderHistory}
         logoutAdmin={logoutAdmin}
         changeAdminPassword={changeAdminPassword}
+        isCloudReady={isCloudReady}
+        isSupabaseConfigured={cloudStore.isSupabaseConfigured}
       />
     );
   }
@@ -759,7 +857,7 @@ export default function App() {
           )}
         </section>
 
-        <aside className={isCartOpen ? "sidebar mobile-cart-open" : "sidebar"} id="order-bag">
+        <aside className={isCartOpen ? "sidebar order-sidebar mobile-cart-open" : "sidebar order-sidebar"} id="order-bag">
           <OrderForm
             cart={cart}
             updateCart={updateCart}

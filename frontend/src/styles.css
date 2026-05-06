@@ -249,6 +249,24 @@ a {
   justify-content: flex-end;
 }
 
+.cloud-status {
+  display: inline-flex;
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(234, 88, 12, 0.22);
+  border-radius: 999px;
+  background: var(--warm-soft);
+  color: #9a3412;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.cloud-status.connected {
+  border-color: rgba(21, 128, 61, 0.2);
+  background: rgba(240, 253, 244, 0.92);
+  color: var(--success);
+}
+
 .login-shell {
   min-height: 100vh;
   display: grid;
@@ -1298,11 +1316,11 @@ select {
     gap: 12px;
   }
 
-  .sidebar {
+  .order-sidebar {
     display: none;
   }
 
-  .sidebar.mobile-cart-open {
+  .order-sidebar.mobile-cart-open {
     display: grid;
   }
 

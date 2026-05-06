@@ -56,7 +56,9 @@ export function LocalAdminPanel({
   updateOrderStatus,
   clearOrderHistory,
   logoutAdmin,
-  changeAdminPassword
+  changeAdminPassword,
+  isCloudReady,
+  isSupabaseConfigured
 }) {
   const [form, setForm] = useState(emptyForm);
   const [settingsForm, setSettingsForm] = useState({
@@ -219,13 +221,17 @@ export function LocalAdminPanel({
     }
   }
 
-  function handleSettingsSubmit(event) {
+  async function handleSettingsSubmit(event) {
     event.preventDefault();
-    saveSettings({
-      ...settings,
-      ...settingsForm
-    });
-    setSettingsStatus("Store details saved successfully.");
+    try {
+      await saveSettings({
+        ...settings,
+        ...settingsForm
+      });
+      setSettingsStatus("Store details saved successfully.");
+    } catch (error) {
+      setSettingsStatus(error.message);
+    }
   }
 
   function handlePasswordSubmit(event) {
@@ -271,6 +277,11 @@ export function LocalAdminPanel({
           <h1 className="admin-title">Store manager</h1>
           <p className="catalog-summary">
             Update your store details, products, stock, and recent WhatsApp orders.
+          </p>
+          <p className={isCloudReady ? "cloud-status connected" : "cloud-status"}>
+            {isSupabaseConfigured
+              ? isCloudReady ? "Cloud sync connected" : "Cloud sync is configured but not connected yet"
+              : "Cloud sync is not configured. Changes stay on this browser only."}
           </p>
         </div>
       </div>
