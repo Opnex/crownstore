@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 
+const PLACEHOLDER_IMAGE = "https://via.placeholder.com/800x600?text=Crown+Store";
+
 function getImageSrc(product) {
   if (product.image_preview_url) return product.image_preview_url;
-  if (!product.image_url) return "https://via.placeholder.com/800x600?text=Crown+Store";
+  if (!product.image_url) return PLACEHOLDER_IMAGE;
   return product.image_url;
 }
 
@@ -15,6 +17,25 @@ function getDefaultSelection(product) {
 
 function getVariantLabel(selection) {
   return [selection.size ? `Size ${selection.size}` : "", selection.color || ""].filter(Boolean).join(" / ");
+}
+
+function ProductImage({ src, alt, className, loading = "lazy" }) {
+  const [imageSrc, setImageSrc] = useState(src || PLACEHOLDER_IMAGE);
+
+  useEffect(() => {
+    setImageSrc(src || PLACEHOLDER_IMAGE);
+  }, [src]);
+
+  return (
+    <img
+      className={className}
+      src={imageSrc}
+      alt={alt}
+      loading={loading}
+      decoding="async"
+      onError={() => setImageSrc(PLACEHOLDER_IMAGE)}
+    />
+  );
 }
 
 export function ProductGrid({ products, addToCart }) {
@@ -121,7 +142,7 @@ export function ProductGrid({ products, addToCart }) {
               </div>
 
               <div className="product-img-wrapper" onClick={() => openProduct(product)} style={{ cursor: "pointer" }}>
-                <img src={getImageSrc(product)} alt={product.name} />
+                <ProductImage src={getImageSrc(product)} alt={product.name} />
               </div>
 
               <div className="product-meta">
@@ -155,7 +176,7 @@ export function ProductGrid({ products, addToCart }) {
         <div className="modal-overlay" onClick={closeProduct}>
           <div className="modal-content" onClick={(event) => event.stopPropagation()}>
             <button className="modal-close" onClick={closeProduct}>&times;</button>
-            <img className="modal-image" src={getImageSrc(selectedProduct)} alt={selectedProduct.name} />
+            <ProductImage className="modal-image" src={getImageSrc(selectedProduct)} alt={selectedProduct.name} loading="eager" />
             <div className="modal-info">
               <div>
                 <div className="product-topline modal-topline">

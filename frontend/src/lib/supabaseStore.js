@@ -15,6 +15,7 @@ const SETTINGS_COLUMNS = [
   "hero_title",
   "hero_subtitle"
 ];
+const REQUEST_TIMEOUT_MS = 12000;
 
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
@@ -40,12 +41,36 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type: mime });
 }
 
+async function fetchWithRetry(url, options = {}, attempts = 2) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      return response;
+    } catch (error) {
+      clearTimeout(timeout);
+      lastError = error;
+      if (attempt === attempts) break;
+    }
+  }
+
+  throw lastError;
+}
+
 async function request(path, options = {}) {
   if (!isSupabaseConfigured) {
     throw new Error("Supabase is not configured.");
   }
 
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  const response = await fetchWithRetry(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
     headers: getHeaders(options.headers)
   });
@@ -89,7 +114,7 @@ export async function uploadProductImage(dataUrl, productId) {
   const blob = dataUrlToBlob(dataUrl);
   const extension = blob.type.includes("png") ? "png" : "jpg";
   const imagePath = `${productId}-${Date.now()}.${extension}`;
-  const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${PRODUCT_IMAGES_BUCKET}/${imagePath}`, {
+  const response = await fetchWithRetry(`${SUPABASE_URL}/storage/v1/object/${PRODUCT_IMAGES_BUCKET}/${imagePath}`, {
     method: "POST",
     headers: {
       apikey: SUPABASE_ANON_KEY,

@@ -25,14 +25,20 @@ const STORE_CATEGORIES = [
   "Men's Short",
   "Ladies Short Skirt",
   "Men's  Joggers",
+  "Ladies Up And Down",
+  "Men’s Up And Down",
+  "Ladies Night Wear",
+  "Children Underwear",
   "Trousers",
   "Roundneck",
   "Polo",
   "Cap",
   "Men's Under Wears",
   "Ladies Under Wears",
-  "Gown"
+  "Gown",
+  "Others"
 ];
+const PLACEHOLDER_IMAGE = "https://via.placeholder.com/800x600?text=Crown+Store";
 
 const defaultStoreSettings = {
   store_name: "Crown Store",
@@ -334,29 +340,29 @@ export default function App() {
     let isMounted = true;
 
     async function loadCloudStore() {
-      try {
-        const [cloudProducts, cloudSettings, cloudOrders] = await Promise.all([
-          cloudStore.fetchProducts(),
-          cloudStore.fetchSettings(),
-          cloudStore.fetchOrders()
-        ]);
+      const [productsResult, settingsResult, ordersResult] = await Promise.allSettled([
+        cloudStore.fetchProducts(),
+        cloudStore.fetchSettings(),
+        cloudStore.fetchOrders()
+      ]);
 
-        if (!isMounted) return;
+      if (!isMounted) return;
 
-        if (Array.isArray(cloudProducts) && cloudProducts.length) {
-          setProducts(cloudProducts.map((product, index) => normalizeProduct(product, index + 1)));
-        }
-        if (cloudSettings) {
-          setStoreSettings(normalizeSettings(cloudSettings));
-        }
-        if (Array.isArray(cloudOrders)) {
-          setOrderHistory(cloudOrders);
-        }
+      if (productsResult.status === "fulfilled" && Array.isArray(productsResult.value) && productsResult.value.length) {
+        setProducts(productsResult.value.map((product, index) => normalizeProduct(product, index + 1)));
+      }
+      if (settingsResult.status === "fulfilled" && settingsResult.value) {
+        setStoreSettings(normalizeSettings(settingsResult.value));
+      }
+      if (ordersResult.status === "fulfilled" && Array.isArray(ordersResult.value)) {
+        setOrderHistory(ordersResult.value);
+      }
 
+      if (productsResult.status === "fulfilled" || settingsResult.status === "fulfilled") {
         setIsCloudReady(true);
-      } catch (error) {
+      } else {
         setIsCloudReady(false);
-        setMessage("Cloud store could not be loaded. The app is using this browser's local data for now.");
+        setMessage("Cloud store is slow or unavailable right now. Showing saved local data while it reconnects.");
       }
     }
 
@@ -811,6 +817,11 @@ export default function App() {
               <img
                 src={product.image_preview_url || product.image_url || "https://via.placeholder.com/180x180?text=Crown+Store"}
                 alt={product.name}
+                loading="lazy"
+                decoding="async"
+                onError={(event) => {
+                  event.currentTarget.src = PLACEHOLDER_IMAGE;
+                }}
               />
               <span>{product.name}</span>
               <strong>N{product.price.toLocaleString()}</strong>

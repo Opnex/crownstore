@@ -16,6 +16,7 @@ const emptyForm = {
 };
 
 const ORDER_STATUSES = ["New", "Confirmed", "Paid", "Delivered", "Cancelled"];
+const ADMIN_PLACEHOLDER_IMAGE = "https://via.placeholder.com/160x160?text=Crown+Store";
 
 async function compressImageFile(file) {
   return new Promise((resolve, reject) => {
@@ -96,6 +97,10 @@ export function LocalAdminPanel({
     "Men's Short",
     "Ladies Short Skirt",
     "Men's  Joggers",
+    "Ladies Up And Down",
+    "Men’s Up And Down",
+    "Ladies Night Wear",
+    "Children Underwear",
     "Trousers",
     "Roundneck",
     "Polo",
@@ -103,6 +108,7 @@ export function LocalAdminPanel({
     "Men's Under Wears",
     "Ladies Under Wears",
     "Gown",
+    "Others",
     ...new Set(products.map((product) => product.category).filter(Boolean))
   ].filter((category, index, list) => list.indexOf(category) === index);
   const searchedAdminProducts = adminProductSearch
@@ -459,8 +465,13 @@ export function LocalAdminPanel({
                 <article key={product.id} className="admin-product-card">
                   <img
                     className="admin-product-image"
-                    src={product.image_preview_url || product.image_url || "https://via.placeholder.com/160x160?text=Crown+Store"}
+                    src={product.image_preview_url || product.image_url || ADMIN_PLACEHOLDER_IMAGE}
                     alt={product.name}
+                    loading="lazy"
+                    decoding="async"
+                    onError={(event) => {
+                      event.currentTarget.src = ADMIN_PLACEHOLDER_IMAGE;
+                    }}
                   />
                   <div className="admin-product-info">
                     <div className="order-head">
